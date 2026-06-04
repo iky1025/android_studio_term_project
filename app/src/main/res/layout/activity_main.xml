@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/mainLayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="20dp"
+    android:gravity="center_horizontal">
+
+    <ImageView
+        android:id="@+id/imagePreview"
+        android:layout_width="300dp"
+        android:layout_height="300dp"
+        android:scaleType="centerCrop"
+        android:background="#DDDDDD"
+        android:contentDescription="선택한 이미지 미리보기" />
+
+    <Button
+        android:id="@+id/btnSelectImage"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="이미지 선택"
+        android:layout_marginTop="20dp" />
+
+    <Button
+        android:id="@+id/btnClassify"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="학생증 여부 판단"
+        android:layout_marginTop="12dp" />
+
+    <TextView
+        android:id="@+id/txtResult"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="결과가 여기에 표시됩니다."
+        android:textSize="18sp"
+        android:layout_marginTop="20dp" />
+
+</LinearLayout>
