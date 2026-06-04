@@ -1,5 +1,6 @@
 package com.example.term_project
 
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.net.Uri
@@ -10,41 +11,41 @@ import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
 
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
 
     private lateinit var imagePreview: ImageView
     private lateinit var btnSelectImage: Button
     private lateinit var btnClassify: Button
     private lateinit var txtResult: TextView
-
     private lateinit var classifier: StudentIdClassifier
 
     private var selectedBitmap: Bitmap? = null
+    private var selectedImageUri: Uri? = null
 
     private val imagePickerLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-
         if (uri == null) {
             Toast.makeText(this, "이미지를 선택하지 않았습니다.", Toast.LENGTH_SHORT).show()
             return@registerForActivityResult
         }
 
+        selectedImageUri = uri
         selectedBitmap = uriToBitmap(uri)
-
         imagePreview.setImageBitmap(selectedBitmap)
-        txtResult.text = "이미지가 선택되었습니다. 학생증 여부 판단 버튼을 누르세요."
+        txtResult.text = "이미지가 선택되었습니다. 분류 시작 버튼을 누르세요."
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         setContentView(R.layout.activity_main)
 
         imagePreview = findViewById(R.id.imagePreview)
@@ -65,158 +66,127 @@ class MainActivity : ComponentActivity() {
 
     private fun classifySelectedImage() {
         val bitmap = selectedBitmap
+        val uri = selectedImageUri
 
-        if (bitmap == null) {
-            Toast.makeText(this, "먼저 이미지를 선택해주세요.", Toast.LENGTH_SHORT).show()
+        if (bitmap == null || uri == null) {
+            Toast.makeText(this, "먼저 이미지를 선택하세요.", Toast.LENGTH_SHORT).show()
             return
         }
 
-        val result = classifier.classify(bitmap)
+        btnClassify.isEnabled = false
+        txtResult.text = "학생증 여부를 판단하는 중입니다..."
 
+        val result = classifier.classify(bitmap)
         val threshold = 0.80f
 
-        val message = buildString {
-            append("TFLite 학생증 분류 결과\n\n")
-            append("예측 결과: ${result.label}\n")
+        val summary = buildString {
+            append("TFLite 분류 결과\n")
+            append("예측: ${result.label}\n")
             append("확신도: ${String.format("%.2f", result.confidence * 100)}%\n\n")
-            append("전체 확률:\n")
-
-            for ((label, prob) in result.allProbabilities) {
-                append("$label : ${String.format("%.2f", prob * 100)}%\n")
+            result.allProbabilities.forEach { (label, probability) ->
+                append("$label: ${String.format("%.2f", probability * 100)}%\n")
             }
         }
 
-        txtResult.text = message
+        txtResult.text = summary
 
         when {
             result.label == "student_id" && result.confidence >= threshold -> {
-                Toast.makeText(this, "학생증으로 판단됨", Toast.LENGTH_SHORT).show()
-
-                txtResult.text = buildString {
-                    append(message)
-                    append("\n\n")
-                    append("다음 단계: 학생증 OCR 처리 예정")
-                }
-
-                // 다음 단계에서 여기에 학생증 OCR 넣으면 됨
-                // runStudentIdTextRecognition(bitmap)
+                openStudentIdActivity(uri, result.label, result.confidence)
             }
 
             result.label == "non_student_id" && result.confidence >= threshold -> {
-                Toast.makeText(this, "학생증이 아닌 일반 이미지로 판단됨", Toast.LENGTH_SHORT).show()
-
-                // 학생증이 아니면 ML Kit으로 얼굴 감지 실행
-                detectFacesWithMlKit(bitmap, message)
+                txtResult.text = "$summary\n\n일반 사진으로 판단되어 사람/번호판을 감지하는 중입니다..."
+                detectGeneralPrivacyThenOpen(uri, bitmap, summary)
             }
 
             else -> {
-                Toast.makeText(this, "판단이 애매합니다. 다시 선택해주세요.", Toast.LENGTH_SHORT).show()
-
-                txtResult.text = buildString {
-                    append(message)
-                    append("\n\n")
-                    append("판단이 애매합니다.\n")
-                    append("다른 이미지를 다시 선택해주세요.")
-                }
+                btnClassify.isEnabled = true
+                txtResult.text = "$summary\n\n판단이 불확실합니다. 다른 이미지를 선택하세요."
+                Toast.makeText(this, "판단이 불확실합니다.", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
-    private fun detectFacesWithMlKit(bitmap: Bitmap, previousMessage: String) {
-        val image = InputImage.fromBitmap(bitmap, 0)
+    private fun openStudentIdActivity(uri: Uri, label: String, confidence: Float) {
+        btnClassify.isEnabled = true
+        startActivity(
+            Intent(this, StudentIdBlurActivity::class.java).apply {
+                putExtra(EXTRA_IMAGE_URI, uri.toString())
+                putExtra(EXTRA_CLASSIFY_LABEL, label)
+                putExtra(EXTRA_CONFIDENCE, confidence)
+            }
+        )
+    }
 
-        val options = FaceDetectorOptions.Builder()
-            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
-            .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
-            .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
-            .enableTracking()
-            .build()
+    private fun detectGeneralPrivacyThenOpen(uri: Uri, bitmap: Bitmap, previousMessage: String) {
+        val inputImage = InputImage.fromBitmap(bitmap, 0)
+        val faceDetector = FaceDetection.getClient(
+            FaceDetectorOptions.Builder()
+                .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+                .build()
+        )
+        val textRecognizer = TextRecognition.getClient(KoreanTextRecognizerOptions.Builder().build())
+        val plateRegex = Regex("""(?:\d{2,3}\s*[가-힣]\s*\d{4}|[가-힣]{2}\s*\d{1,2}\s*[가-힣]\s*\d{4})""")
 
-        val detector = FaceDetection.getClient(options)
-
-        detector.process(image)
+        faceDetector.process(inputImage)
             .addOnSuccessListener { faces ->
-
                 if (faces.isNotEmpty()) {
-                    val faceResultText = buildString {
-                        append(previousMessage)
-                        append("\n\n")
-                        append("ML Kit 얼굴 감지 결과\n\n")
-                        append("사람 있음으로 판단\n")
-                        append("감지된 얼굴 수: ${faces.size}개\n\n")
+                    btnClassify.isEnabled = true
+                    openGeneralBlurActivity(uri)
+                    return@addOnSuccessListener
+                }
 
-                        faces.forEachIndexed { index, face ->
-                            val box = face.boundingBox
-
-                            append("${index + 1}번 얼굴 좌표\n")
-                            append("left: ${box.left}\n")
-                            append("top: ${box.top}\n")
-                            append("right: ${box.right}\n")
-                            append("bottom: ${box.bottom}\n\n")
+                textRecognizer.process(inputImage)
+                    .addOnSuccessListener { visionText ->
+                        btnClassify.isEnabled = true
+                        if (plateRegex.containsMatchIn(visionText.text.replace("\n", " "))) {
+                            openGeneralBlurActivity(uri)
+                        } else {
+                            txtResult.text = "$previousMessage\n\n사람 또는 자동차 번호판이 감지되지 않았습니다."
+                            Toast.makeText(this, "사람 또는 자동차 번호판이 감지되지 않았습니다.", Toast.LENGTH_SHORT).show()
                         }
                     }
-
-                    txtResult.text = faceResultText
-
-                    Toast.makeText(
-                        this,
-                        "사람 얼굴이 감지되었습니다.",
-                        Toast.LENGTH_SHORT
-                    ).show()
-
-                    // 나중에 여기서 2번 액티비티로 얼굴 좌표 전달 가능
-                    // face.boundingBox 값을 넘기면 됨
-
-                } else {
-                    val noFaceResultText = buildString {
-                        append(previousMessage)
-                        append("\n\n")
-                        append("ML Kit 얼굴 감지 결과\n\n")
-                        append("얼굴이 감지되지 않았습니다.\n")
-                        append("사람 없음 또는 얼굴 미검출로 판단합니다.")
+                    .addOnFailureListener { error ->
+                        btnClassify.isEnabled = true
+                        txtResult.text = "$previousMessage\n\nML Kit 번호판 감지 실패: ${error.message}"
                     }
-
-                    txtResult.text = noFaceResultText
-
-                    Toast.makeText(
-                        this,
-                        "얼굴이 감지되지 않았습니다.",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
             }
-            .addOnFailureListener { e ->
-
-                txtResult.text = buildString {
-                    append(previousMessage)
-                    append("\n")
-                    append("ML Kit 얼굴 감지 실패\n")
-                    append(e.message)
-                }
-
-                Toast.makeText(
-                    this,
-                    "ML Kit 얼굴 감지 실패",
-                    Toast.LENGTH_SHORT
-                ).show()
+            .addOnFailureListener { error ->
+                btnClassify.isEnabled = true
+                txtResult.text = "$previousMessage\n\nML Kit 얼굴 감지 실패: ${error.message}"
             }
+    }
+
+    private fun openGeneralBlurActivity(uri: Uri) {
+        startActivity(
+            Intent(this, GeneralBlurActivity::class.java).apply {
+                putExtra(EXTRA_IMAGE_URI, uri.toString())
+                putExtra(EXTRA_CLASSIFY_LABEL, "non_student_id")
+            }
+        )
     }
 
     private fun uriToBitmap(uri: Uri): Bitmap {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             val source = ImageDecoder.createSource(contentResolver, uri)
-
             ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
                 decoder.isMutableRequired = true
-            }
+            }.copy(Bitmap.Config.ARGB_8888, true)
         } else {
             @Suppress("DEPRECATION")
-            MediaStore.Images.Media.getBitmap(contentResolver, uri)
+            MediaStore.Images.Media.getBitmap(contentResolver, uri).copy(Bitmap.Config.ARGB_8888, true)
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         classifier.close()
+    }
+
+    companion object {
+        const val EXTRA_IMAGE_URI = "IMAGE_URI"
+        const val EXTRA_CLASSIFY_LABEL = "CLASSIFY_LABEL"
+        const val EXTRA_CONFIDENCE = "CONFIDENCE"
     }
 }

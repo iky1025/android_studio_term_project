@@ -53,6 +53,9 @@ dependencies {
 
     implementation("org.tensorflow:tensorflow-lite:2.17.0")
     implementation("com.google.mlkit:face-detection:16.1.7")
+    implementation("com.google.mlkit:text-recognition-korean:16.0.1")
+    implementation("androidx.drawerlayout:drawerlayout:1.2.0")
+    implementation("androidx.recyclerview:recyclerview:1.3.2")
 
 
     implementation("androidx.core:core-ktx:1.13.1")
