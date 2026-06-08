@@ -11,8 +11,8 @@ import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
@@ -23,6 +23,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var imagePreview: ImageView
     private lateinit var btnSelectImage: Button
+    private lateinit var btnCaptureImage: Button
     private lateinit var btnClassify: Button
     private lateinit var txtResult: TextView
     private lateinit var classifier: StudentIdClassifier
@@ -38,10 +39,23 @@ class MainActivity : AppCompatActivity() {
             return@registerForActivityResult
         }
 
-        selectedImageUri = uri
-        selectedBitmap = uriToBitmap(uri)
-        imagePreview.setImageBitmap(selectedBitmap)
-        txtResult.text = "이미지가 선택되었습니다. 분류 시작 버튼을 누르세요."
+        setSelectedImage(uri)
+    }
+
+    private val cameraLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode != RESULT_OK) {
+            return@registerForActivityResult
+        }
+
+        val uriString = result.data?.getStringExtra(EXTRA_IMAGE_URI)
+        if (uriString.isNullOrBlank()) {
+            Toast.makeText(this, "촬영한 이미지를 불러오지 못했습니다.", Toast.LENGTH_SHORT).show()
+            return@registerForActivityResult
+        }
+
+        setSelectedImage(Uri.parse(uriString))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -50,6 +64,7 @@ class MainActivity : AppCompatActivity() {
 
         imagePreview = findViewById(R.id.imagePreview)
         btnSelectImage = findViewById(R.id.btnSelectImage)
+        btnCaptureImage = findViewById(R.id.btnCaptureImage)
         btnClassify = findViewById(R.id.btnClassify)
         txtResult = findViewById(R.id.txtResult)
 
@@ -59,9 +74,20 @@ class MainActivity : AppCompatActivity() {
             imagePickerLauncher.launch("image/*")
         }
 
+        btnCaptureImage.setOnClickListener {
+            cameraLauncher.launch(Intent(this, CameraActivity::class.java))
+        }
+
         btnClassify.setOnClickListener {
             classifySelectedImage()
         }
+    }
+
+    private fun setSelectedImage(uri: Uri) {
+        selectedImageUri = uri
+        selectedBitmap = uriToBitmap(uri)
+        imagePreview.setImageBitmap(selectedBitmap)
+        txtResult.text = "이미지가 준비되었습니다. 분류 시작 버튼을 누르세요."
     }
 
     private fun classifySelectedImage() {
@@ -69,7 +95,7 @@ class MainActivity : AppCompatActivity() {
         val uri = selectedImageUri
 
         if (bitmap == null || uri == null) {
-            Toast.makeText(this, "먼저 이미지를 선택하세요.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "먼저 이미지를 선택하거나 촬영하세요.", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -81,10 +107,10 @@ class MainActivity : AppCompatActivity() {
 
         val summary = buildString {
             append("TFLite 분류 결과\n")
-            append("예측: ${result.label}\n")
+            append("예측: ${toKoreanLabel(result.label)}\n")
             append("확신도: ${String.format("%.2f", result.confidence * 100)}%\n\n")
             result.allProbabilities.forEach { (label, probability) ->
-                append("$label: ${String.format("%.2f", probability * 100)}%\n")
+                append("${toKoreanLabel(label)}: ${String.format("%.2f", probability * 100)}%\n")
             }
         }
 
@@ -96,13 +122,13 @@ class MainActivity : AppCompatActivity() {
             }
 
             result.label == "non_student_id" && result.confidence >= threshold -> {
-                txtResult.text = "$summary\n\n일반 사진으로 판단되어 사람/번호판을 감지하는 중입니다..."
+                txtResult.text = "$summary\n\n사람 또는 자동차 번호판을 감지하는 중입니다..."
                 detectGeneralPrivacyThenOpen(uri, bitmap, summary)
             }
 
             else -> {
                 btnClassify.isEnabled = true
-                txtResult.text = "$summary\n\n판단이 불확실합니다. 다른 이미지를 선택하세요."
+                txtResult.text = "$summary\n\n판단이 불확실합니다. 다른 이미지를 사용해 주세요."
                 Toast.makeText(this, "판단이 불확실합니다.", Toast.LENGTH_SHORT).show()
             }
         }
@@ -127,7 +153,7 @@ class MainActivity : AppCompatActivity() {
                 .build()
         )
         val textRecognizer = TextRecognition.getClient(KoreanTextRecognizerOptions.Builder().build())
-        val plateRegex = Regex("""(?:\d{2,3}\s*[가-힣]\s*\d{4}|[가-힣]{2}\s*\d{1,2}\s*[가-힣]\s*\d{4})""")
+        val plateRegex = Regex("""(?:\d{2,3}\s*[\uAC00-\uD7A3]\s*\d{4}|[\uAC00-\uD7A3]{2}\s*\d{1,2}\s*[\uAC00-\uD7A3]\s*\d{4})""")
 
         faceDetector.process(inputImage)
             .addOnSuccessListener { faces ->
@@ -149,7 +175,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     .addOnFailureListener { error ->
                         btnClassify.isEnabled = true
-                        txtResult.text = "$previousMessage\n\nML Kit 번호판 감지 실패: ${error.message}"
+                        txtResult.text = "$previousMessage\n\nML Kit 문자 감지 실패: ${error.message}"
                     }
             }
             .addOnFailureListener { error ->
@@ -165,6 +191,14 @@ class MainActivity : AppCompatActivity() {
                 putExtra(EXTRA_CLASSIFY_LABEL, "non_student_id")
             }
         )
+    }
+
+    private fun toKoreanLabel(label: String): String {
+        return when (label) {
+            "student_id" -> "학생증"
+            "non_student_id" -> "일반 사진"
+            else -> label
+        }
     }
 
     private fun uriToBitmap(uri: Uri): Bitmap {

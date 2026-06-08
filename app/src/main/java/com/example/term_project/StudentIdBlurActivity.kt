@@ -71,8 +71,16 @@ class StudentIdBlurActivity : AppCompatActivity() {
             return
         }
 
-        txtStatus.text = "\uBD84\uB958: $label, \uD655\uC2E0\uB3C4: ${String.format("%.2f", confidence * 100)}%\n\uD559\uC0DD\uC99D \uAC1C\uC778\uC815\uBCF4\uB97C \uAC10\uC9C0\uD558\uB294 \uC911\uC785\uB2C8\uB2E4..."
+        txtStatus.text = "\uBD84\uB958: ${toKoreanLabel(label)}, \uD655\uC2E0\uB3C4: ${String.format("%.2f", confidence * 100)}%\n\uD559\uC0DD\uC99D \uAC1C\uC778\uC815\uBCF4\uB97C \uAC10\uC9C0\uD558\uB294 \uC911\uC785\uB2C8\uB2E4..."
         processStudentIdImage(Uri.parse(uriString))
+    }
+
+    private fun toKoreanLabel(label: String): String {
+        return when (label) {
+            "student_id" -> "학생증"
+            "non_student_id" -> "일반 사진"
+            else -> label
+        }
     }
 
     private fun processStudentIdImage(uri: Uri) {

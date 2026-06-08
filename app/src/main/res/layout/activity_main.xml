@@ -32,6 +32,13 @@
         android:text="사진 선택" />
 
     <Button
+        android:id="@+id/btnCaptureImage"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="사진 촬영" />
+
+    <Button
         android:id="@+id/btnClassify"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -43,7 +50,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="20dp"
-        android:text="사진을 선택하면 결과가 표시됩니다."
+        android:text="사진을 선택하거나 촬영하면 결과가 표시됩니다."
         android:textColor="#333333"
         android:textSize="16sp" />
 </LinearLayout>
