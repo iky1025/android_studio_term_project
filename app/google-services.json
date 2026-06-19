@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "179954912207",
+    "project_id": "blurprojectdata",
+    "storage_bucket": "blurprojectdata.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:179954912207:android:1f235eb51d848f9dbea0ba",
+        "android_client_info": {
+          "package_name": "com.example.term_project"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCQ97Q0V49xPZ_5fniiigyArz6RNEN_5p4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

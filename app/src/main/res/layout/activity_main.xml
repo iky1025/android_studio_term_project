@@ -60,6 +60,36 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/etImageUrl"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:background="@drawable/bg_status_card"
+                android:backgroundTint="#FFFFFF"
+                android:hint="이미지 주소(URL) 입력"
+                android:textColorHint="#9E9E9E"
+                android:inputType="textUri"
+                android:padding="12dp"
+                android:textColor="#111111"
+                android:textSize="14sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnLoadUrlImage"
+                style="@style/Widget.TermProject.Button.Secondary"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="불러오기" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
             android:orientation="horizontal">
 

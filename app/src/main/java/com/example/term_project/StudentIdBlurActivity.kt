@@ -11,6 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -31,6 +32,10 @@ import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
+import com.google.android.gms.tasks.Task
+import com.google.firebase.firestore.CollectionReference
+import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.FirebaseFirestore
 import java.io.OutputStream
 import kotlin.math.abs
 import kotlin.math.min
@@ -47,6 +52,8 @@ class StudentIdBlurActivity : AppCompatActivity() {
 
     private var originalBitmap: Bitmap? = null
     private val blurItemsList = ArrayList<BlurItem>()
+
+    val db: FirebaseFirestore = FirebaseFirestore.getInstance()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -393,6 +400,7 @@ class StudentIdBlurActivity : AppCompatActivity() {
         return blackFrame
     }
 
+    // 파이어 베이스 전송 수정
     private fun saveFinalImage() {
         val bitmap = originalBitmap ?: return
         val resultBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
@@ -430,7 +438,10 @@ class StudentIdBlurActivity : AppCompatActivity() {
             val outputStream: OutputStream? = contentResolver.openOutputStream(targetUri)
             outputStream?.use { stream ->
                 resultBitmap.compress(Bitmap.CompressFormat.JPEG, 100, stream)
-                Toast.makeText(this, "\uAC24\uB7EC\uB9AC\uC5D0 \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "갤러리에 저장했습니다.", Toast.LENGTH_SHORT).show()
+
+                // 이미지 로컬 파일 저장이 끝난 후 Firestore로 데이터 누적 전송
+                sendDataToFirebase()
             }
         }
     }
@@ -479,4 +490,41 @@ class StudentIdBlurActivity : AppCompatActivity() {
             )
         }
     }
+
+    private fun sendDataToFirebase() {
+        // 전송할 데이터 맵 생성 (스위치가 꺼진 원본 데이터만 선별)
+        val user = mutableMapOf<String, Any>(
+            "name" to "none",
+            "student_number" to "none",
+            "birth_date" to "none",
+            "affiliation" to "none"
+        )
+
+        blurItemsList.forEach { item ->
+            if (!item.isChecked) {
+                val rawText = item.label
+                when {
+                    rawText.startsWith("이름:") -> user["name"] = rawText.substringAfter("이름:").trim()
+                    rawText.startsWith("학번:") -> user["student_number"] = rawText.substringAfter("학번:").trim()
+                    rawText.startsWith("생년월일:") -> user["birth_date"] = rawText.substringAfter("생년월일:").trim()
+                    rawText.startsWith("소속:") -> user["affiliation"] = rawText.substringAfter("소속:").trim()
+                }
+            }
+        }
+
+        // users 컬렉션 폴더에 데이터 누적
+        val colRef: CollectionReference = db.collection("users")
+        val docRef: Task<DocumentReference> = colRef.add(user)
+
+        docRef.addOnSuccessListener { documentReference ->
+            // 성공 시 로그
+            Log.d("FirebaseDebug", "Success : ${documentReference.id}")
+        }
+
+        docRef.addOnFailureListener {
+            Log.e("FirebaseDebug", "Failure to insert record", it)
+        }
+    }
+
+    
 }
