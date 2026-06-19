@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.view.View
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
@@ -87,6 +88,7 @@ class MainActivity : AppCompatActivity() {
         selectedImageUri = uri
         selectedBitmap = uriToBitmap(uri)
         imagePreview.setImageBitmap(selectedBitmap)
+        findViewById<TextView>(R.id.txtImagePlaceholder).visibility = View.GONE
         txtResult.text = "이미지가 준비되었습니다. 분류 시작 버튼을 누르세요."
     }
 
@@ -169,8 +171,10 @@ class MainActivity : AppCompatActivity() {
                         if (plateRegex.containsMatchIn(visionText.text.replace("\n", " "))) {
                             openGeneralBlurActivity(uri)
                         } else {
-                            txtResult.text = "$previousMessage\n\n사람 또는 자동차 번호판이 감지되지 않았습니다."
-                            Toast.makeText(this, "사람 또는 자동차 번호판이 감지되지 않았습니다.", Toast.LENGTH_SHORT).show()
+                            val errorMessage =
+                                "학생증, 사람 얼굴 또는 자동차 번호판이 감지되지 않았습니다. 다른 이미지를 선택해주세요."
+                            txtResult.text = "$previousMessage\n\n$errorMessage"
+                            Toast.makeText(this, errorMessage, Toast.LENGTH_LONG).show()
                         }
                     }
                     .addOnFailureListener { error ->

@@ -2,51 +2,67 @@
 <androidx.drawerlayout.widget.DrawerLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/studentDrawerLayout"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@color/background">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:padding="16dp">
+        android:paddingStart="20dp"
+        android:paddingTop="20dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="20dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnStudentBack"
+                style="@style/Widget.TermProject.Button.Secondary"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Back" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="14dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="학생증 개인정보 보호"
+                    android:textColor="@color/text_primary"
+                    android:textSize="22sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="가릴 항목을 확인하고 저장하세요."
+                    android:textColor="@color/text_secondary"
+                    android:textSize="13sp" />
+            </LinearLayout>
+        </LinearLayout>
 
         <TextView
             android:id="@+id/txtStudentIdInfo"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="학생증 개인정보 감지 준비 중입니다."
-            android:textColor="#222222"
-            android:textSize="16sp" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:gravity="center"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/btnStudentBack"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="8dp"
-                android:text="이전 화면" />
-
-            <Button
-                android:id="@+id/btnStudentOpenDrawer"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="8dp"
-                android:enabled="false"
-                android:text="블러 목록" />
-
-            <Button
-                android:id="@+id/btnStudentDownload"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:enabled="false"
-                android:text="저장" />
-        </LinearLayout>
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_status_card"
+            android:lineSpacingExtra="2dp"
+            android:padding="14dp"
+            android:text="학생증 개인정보를 감지하는 중입니다."
+            android:textColor="@color/text_primary"
+            android:textSize="14sp" />
 
         <FrameLayout
             android:id="@+id/studentImageContainer"
@@ -54,7 +70,7 @@
             android:layout_height="0dp"
             android:layout_marginTop="16dp"
             android:layout_weight="1"
-            android:background="#FFE0E0E0">
+            android:background="@drawable/bg_image_frame">
 
             <ImageView
                 android:id="@+id/studentIdImageView"
@@ -63,39 +79,68 @@
                 android:contentDescription="학생증 이미지"
                 android:scaleType="fitCenter" />
         </FrameLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnStudentOpenDrawer"
+                style="@style/Widget.TermProject.Button.Secondary"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                android:enabled="false"
+                android:text="감지 목록" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnStudentDownload"
+                style="@style/Widget.TermProject.Button.Primary"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:enabled="false"
+                android:text="이미지 저장" />
+        </LinearLayout>
     </LinearLayout>
 
     <com.google.android.material.navigation.NavigationView
-        android:layout_width="280dp"
+        android:layout_width="300dp"
         android:layout_height="match_parent"
         android:layout_gravity="end"
-        android:background="#FFFFFF">
+        android:background="@color/surface">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:orientation="vertical"
-            android:padding="16dp">
+            android:padding="20dp">
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:paddingBottom="12dp"
-                android:text="학생증 블러 항목"
-                android:textColor="#222222"
-                android:textSize="18sp"
+                android:text="감지된 개인정보"
+                android:textColor="@color/text_primary"
+                android:textSize="20sp"
                 android:textStyle="bold" />
 
-            <View
+            <TextView
                 android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:layout_marginBottom="12dp"
-                android:background="#DDDDDD" />
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="스위치로 가릴 항목을 선택하세요."
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
 
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/rvStudentBlurList"
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
+                android:layout_marginTop="16dp"
                 android:layout_weight="1" />
         </LinearLayout>
     </com.google.android.material.navigation.NavigationView>

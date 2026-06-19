@@ -1,26 +1,52 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@color/black">
 
     <androidx.camera.view.PreviewView
         android:id="@+id/previewView"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <Button
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="32dp"
+        android:background="@drawable/bg_camera_control"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="10dp"
+        android:text="가릴 정보가 잘 보이도록 촬영하세요"
+        android:textColor="@color/white"
+        android:textSize="14sp" />
+
+    <com.google.android.material.button.MaterialButton
         android:id="@+id/btnExitCamera"
+        style="@style/Widget.TermProject.Button.Secondary"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|start"
-        android:layout_margin="20dp"
-        android:text="나가기" />
+        android:layout_marginStart="20dp"
+        android:layout_marginTop="84dp"
+        android:backgroundTint="#CC182033"
+        android:text="나가기"
+        android:textColor="@color/white" />
 
-    <Button
-        android:id="@+id/btnTakePhoto"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:layout_margin="20dp"
-        android:text="사진 촬영" />
+        android:background="#B3182033"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnTakePhoto"
+            style="@style/Widget.TermProject.Button.Primary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="사진 촬영" />
+    </LinearLayout>
 </FrameLayout>
