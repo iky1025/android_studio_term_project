@@ -44,6 +44,11 @@ class CameraActivity : AppCompatActivity() {
         previewView = findViewById(R.id.previewView)
         btnTakePhoto = findViewById(R.id.btnTakePhoto)
 
+        findViewById<Button>(R.id.btnExitCamera).setOnClickListener {
+            setResult(RESULT_CANCELED)
+            finish()
+        }
+
         btnTakePhoto.setOnClickListener {
             takePhoto()
         }

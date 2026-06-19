@@ -23,6 +23,9 @@ import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
@@ -58,6 +61,7 @@ class StudentIdBlurActivity : AppCompatActivity() {
         rvBlurList = findViewById(R.id.rvStudentBlurList)
 
         rvBlurList.layoutManager = LinearLayoutManager(this)
+        findViewById<Button>(R.id.btnStudentBack).setOnClickListener { finish() }
         btnOpenDrawer.setOnClickListener { drawerLayout.openDrawer(GravityCompat.END) }
         btnDownload.setOnClickListener { saveFinalImage() }
 
@@ -128,17 +132,60 @@ class StudentIdBlurActivity : AppCompatActivity() {
                     textRecognizer.process(inputImage)
                         .addOnSuccessListener { visionText ->
                             count = addStudentTextMasks(visionText, mapper, tempItems, count)
-                            finishDetection(tempItems)
+                            detectStudentIdQr(inputImage, mapper, tempItems, count)
                         }
-                        .addOnFailureListener { error ->
-                            finishDetection(tempItems)
-                            txtStatus.text = "OCR \uAC10\uC9C0 \uC2E4\uD328: ${error.message}"
+                        .addOnFailureListener {
+                            detectStudentIdQr(inputImage, mapper, tempItems, count)
                         }
                 }
                 .addOnFailureListener { error ->
                     txtStatus.text = "\uC5BC\uAD74 \uAC10\uC9C0 \uC2E4\uD328: ${error.message}"
                 }
         }
+    }
+
+    private fun detectStudentIdQr(
+        inputImage: InputImage,
+        mapper: ImageCoordinateMapper,
+        targetList: ArrayList<BlurItem>,
+        startCount: Int
+    ) {
+        val options = BarcodeScannerOptions.Builder()
+            .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+            .build()
+        val scanner = BarcodeScanning.getClient(options)
+
+        scanner.process(inputImage)
+            .addOnSuccessListener { barcodes ->
+                var count = startCount
+                barcodes.forEach { barcode ->
+                    val bounds = barcode.boundingBox ?: return@forEach
+                    val mapped = mapper.map(bounds)
+                    val padding = 8
+                    val left = (mapped.left - padding).coerceAtLeast(0)
+                    val top = (mapped.top - padding).coerceAtLeast(0)
+                    val right = (mapped.right + padding).coerceAtMost(imageView.width)
+                    val bottom = (mapped.bottom + padding).coerceAtMost(imageView.height)
+
+                    if (right <= left || bottom <= top || isDuplicate(targetList, left, top)) {
+                        return@forEach
+                    }
+
+                    val layer = addMaskAndNumberBadge(
+                        count,
+                        left,
+                        top,
+                        right - left,
+                        bottom - top
+                    )
+                    targetList.add(BlurItem(count, "QR 코드", layer))
+                    count++
+                }
+            }
+            .addOnCompleteListener {
+                scanner.close()
+                finishDetection(targetList)
+            }
     }
 
     private fun addStudentTextMasks(

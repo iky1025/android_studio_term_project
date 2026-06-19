@@ -61,6 +61,10 @@ class GeneralBlurActivity : AppCompatActivity() {
 
         rvBlurList.layoutManager = LinearLayoutManager(this)
 
+        findViewById<Button>(R.id.btnBack).setOnClickListener {
+            finish()
+        }
+
         btnOpenDrawer.setOnClickListener {
             drawerLayout.openDrawer(GravityCompat.END)
         }

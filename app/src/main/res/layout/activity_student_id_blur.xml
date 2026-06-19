@@ -26,6 +26,13 @@
             android:orientation="horizontal">
 
             <Button
+                android:id="@+id/btnStudentBack"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:text="이전 화면" />
+
+            <Button
                 android:id="@+id/btnStudentOpenDrawer"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
