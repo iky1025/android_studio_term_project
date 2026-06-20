@@ -4,6 +4,8 @@ import android.content.ContentValues
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.ImageDecoder
 import android.graphics.Paint
 import android.graphics.Rect
@@ -29,6 +31,7 @@ import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
+import com.google.mlkit.vision.face.FaceLandmark
 import com.google.mlkit.vision.face.FaceDetectorOptions
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
@@ -92,7 +95,7 @@ class StudentIdBlurActivity : AppCompatActivity() {
 
     private fun processStudentIdImage(uri: Uri) {
         try {
-            originalBitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val loadedBitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 val source = ImageDecoder.createSource(contentResolver, uri)
                 ImageDecoder.decodeBitmap(source).copy(Bitmap.Config.ARGB_8888, true)
             } else {
@@ -100,6 +103,35 @@ class StudentIdBlurActivity : AppCompatActivity() {
                 MediaStore.Images.Media.getBitmap(contentResolver, uri).copy(Bitmap.Config.ARGB_8888, true)
             }
 
+            val maxDim = 2048
+            val originalWidth = loadedBitmap.width
+            val originalHeight = loadedBitmap.height
+            val optimizedBitmap =
+                if (originalWidth > maxDim || originalHeight > maxDim) {
+                    val scale = maxDim.toFloat() / maxOf(originalWidth, originalHeight)
+                    val targetWidth = (originalWidth * scale).toInt()
+                    val targetHeight = (originalHeight * scale).toInt()
+                    Bitmap.createScaledBitmap(
+                        loadedBitmap,
+                        targetWidth,
+                        targetHeight,
+                        true
+                    )
+                } else {
+                    loadedBitmap
+                }
+
+            val cleanBitmap = Bitmap.createBitmap(
+                optimizedBitmap.width,
+                optimizedBitmap.height,
+                Bitmap.Config.ARGB_8888
+            )
+            Canvas(cleanBitmap).apply {
+                drawColor(Color.WHITE)
+                drawBitmap(optimizedBitmap, 0f, 0f, null)
+            }
+
+            originalBitmap = cleanBitmap
             imageView.setImageBitmap(originalBitmap)
             detectStudentIdPrivacy(originalBitmap!!)
         } catch (e: Exception) {
@@ -109,9 +141,12 @@ class StudentIdBlurActivity : AppCompatActivity() {
 
     private fun detectStudentIdPrivacy(bitmap: Bitmap) {
         val inputImage = InputImage.fromBitmap(bitmap, 0)
+        val ocrBitmap = createOcrBitmap(bitmap)
+        val ocrInputImage = InputImage.fromBitmap(ocrBitmap, 0)
         val faceDetector = FaceDetection.getClient(
             FaceDetectorOptions.Builder()
                 .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
+                .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
                 .build()
         )
         val textRecognizer = TextRecognition.getClient(KoreanTextRecognizerOptions.Builder().build())
@@ -120,10 +155,35 @@ class StudentIdBlurActivity : AppCompatActivity() {
 
         imageView.post {
             val mapper = ImageCoordinateMapper(imageView, bitmap)
+            val ocrMapper = ImageCoordinateMapper(imageView, ocrBitmap)
+
+            fun runOcr() {
+                textRecognizer.process(ocrInputImage)
+                    .addOnSuccessListener { visionText ->
+                        count = addStudentTextMasks(visionText, ocrMapper, tempItems, count)
+                        detectStudentIdQr(inputImage, mapper, tempItems, count)
+                    }
+                    .addOnFailureListener { error ->
+                        Log.w("StudentIdDetection", "OCR 감지 실패", error)
+                        detectStudentIdQr(inputImage, mapper, tempItems, count)
+                    }
+                    .addOnCompleteListener {
+                        textRecognizer.close()
+                    }
+            }
 
             faceDetector.process(inputImage)
                 .addOnSuccessListener { faces ->
                     faces.forEach { face ->
+                        val bounds = face.boundingBox
+                        val hasBothEyes =
+                            face.getLandmark(FaceLandmark.LEFT_EYE) != null &&
+                                face.getLandmark(FaceLandmark.RIGHT_EYE) != null
+                        val largeEnough =
+                            bounds.width() >= bitmap.width * 0.08f &&
+                                bounds.height() >= bitmap.height * 0.08f
+                        if (!hasBothEyes || !largeEnough) return@forEach
+
                         val mapped = mapper.map(face.boundingBox)
                         if (mapped.width() > 0 && mapped.height() > 0) {
                             val layer = addMaskAndNumberBadge(count, mapped.left, mapped.top, mapped.width(), mapped.height())
@@ -131,20 +191,50 @@ class StudentIdBlurActivity : AppCompatActivity() {
                             count++
                         }
                     }
-
-                    textRecognizer.process(inputImage)
-                        .addOnSuccessListener { visionText ->
-                            count = addStudentTextMasks(visionText, mapper, tempItems, count)
-                            detectStudentIdQr(inputImage, mapper, tempItems, count)
-                        }
-                        .addOnFailureListener {
-                            detectStudentIdQr(inputImage, mapper, tempItems, count)
-                        }
+                    runOcr()
                 }
                 .addOnFailureListener { error ->
-                    txtStatus.text = "얼굴 감지 실패: ${error.message}"
+                    Log.w("StudentIdDetection", "얼굴 감지 실패, OCR은 계속 진행합니다.", error)
+                    runOcr()
+                }
+                .addOnCompleteListener {
+                    faceDetector.close()
                 }
         }
+    }
+
+    private fun createOcrBitmap(bitmap: Bitmap): Bitmap {
+        val scale = if (bitmap.width < 1200 || bitmap.height < 1200) 2f else 1.5f
+        val result = Bitmap.createBitmap(
+            (bitmap.width * scale).toInt(),
+            (bitmap.height * scale).toInt(),
+            Bitmap.Config.ARGB_8888
+        )
+        val contrast = 1.7f
+        val offset = (-0.5f * contrast + 0.5f) * 255f
+        val colorMatrix = ColorMatrix().apply {
+            setSaturation(0f)
+            postConcat(
+                ColorMatrix(
+                    floatArrayOf(
+                        contrast, 0f, 0f, 0f, offset,
+                        0f, contrast, 0f, 0f, offset,
+                        0f, 0f, contrast, 0f, offset,
+                        0f, 0f, 0f, 1f, 0f
+                    )
+                )
+            )
+        }
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+            colorFilter = ColorMatrixColorFilter(colorMatrix)
+        }
+        Canvas(result).drawBitmap(
+            bitmap,
+            null,
+            Rect(0, 0, result.width, result.height),
+            paint
+        )
+        return result
     }
 
     private fun detectStudentIdQr(
@@ -204,34 +294,72 @@ class StudentIdBlurActivity : AppCompatActivity() {
                 val bounds = line.boundingBox ?: return@mapNotNull null
                 StudentOcrLine(line.text.trim(), bounds)
             }
+        val elements = visionText.textBlocks
+            .flatMap { it.lines }
+            .flatMap { it.elements }
+            .mapNotNull { element ->
+                val bounds = element.boundingBox ?: return@mapNotNull null
+                StudentOcrLine(element.text.trim(), bounds)
+            }
 
         lines.forEach { line ->
             val directLabel = classifyDirectStudentText(line.text) ?: return@forEach
+            if (directLabel == "학번" || directLabel == "생년월일") return@forEach
             count = addTextMask(directLabel, line, mapper, targetList, count)
         }
 
-        count = addValueBesideLabel("name", lines, mapper, targetList, count)
-        count = addValueBesideLabel("student_number", lines, mapper, targetList, count)
-        count = addValueBesideLabel("birth_date", lines, mapper, targetList, count)
-        count = addAffiliationValues(lines, mapper, targetList, count)
+        count = addValueBesideLabel("name", lines, elements, mapper, targetList, count)
+        count = addValueBesideLabel("student_number", lines, elements, mapper, targetList, count)
+        count = addValueBesideLabel("birth_date", lines, elements, mapper, targetList, count)
+        count = addAffiliationValues(lines, elements, mapper, targetList, count)
         return count
     }
 
     private fun addValueBesideLabel(
         labelType: String,
         lines: List<StudentOcrLine>,
+        elements: List<StudentOcrLine>,
         mapper: ImageCoordinateMapper,
         targetList: ArrayList<BlurItem>,
         startCount: Int
     ): Int {
-        val labelLine = lines.firstOrNull { isLabelLine(labelType, it.text) } ?: return startCount
-        val valueLine = lines
-            .filter { candidate ->
-                candidate.bounds.left > labelLine.bounds.right &&
-                    abs(candidate.centerY - labelLine.centerY) < 50 &&
-                    isValueForLabel(labelType, candidate.text)
+        val allItems = (elements + lines).distinctBy {
+            "${it.text}:${it.bounds.left}:${it.bounds.top}:${it.bounds.right}:${it.bounds.bottom}"
+        }
+        val labelItems = allItems.filter { isLabelLine(labelType, it.text) }
+        if (labelItems.isEmpty()) return startCount
+
+        val valueLine = labelItems
+            .flatMap { labelLine ->
+                val verticalTolerance = maxOf(labelLine.bounds.height() * 2, 60)
+                allItems.mapNotNull { candidate ->
+                    val value = extractValueForLabel(labelType, candidate.text) ?: return@mapNotNull null
+                    if (candidate.bounds == labelLine.bounds) {
+                        return@mapNotNull StudentValueCandidate(
+                            StudentOcrLine(value, candidate.bounds),
+                            0
+                        )
+                    }
+
+                    val isOnRight = candidate.bounds.left >= labelLine.bounds.right - labelLine.bounds.width() / 3 &&
+                        abs(candidate.centerY - labelLine.centerY) <= verticalTolerance
+                    val isJustBelow = candidate.bounds.top >= labelLine.bounds.bottom &&
+                        candidate.bounds.top - labelLine.bounds.bottom <= verticalTolerance &&
+                        abs(candidate.bounds.left - labelLine.bounds.left) <= labelLine.bounds.width() * 3
+
+                    if (!isOnRight && !isJustBelow) return@mapNotNull null
+
+                    val directionPenalty = if (isOnRight) 0 else verticalTolerance
+                    StudentValueCandidate(
+                        StudentOcrLine(value, candidate.bounds),
+                        abs(candidate.centerY - labelLine.centerY) +
+                            abs(candidate.bounds.left - labelLine.bounds.right) +
+                            directionPenalty
+                    )
+                }
             }
-            .minByOrNull { abs(it.centerY - labelLine.centerY) + abs(it.bounds.left - labelLine.bounds.right) }
+            .minByOrNull { it.score }
+            ?.line
             ?: return startCount
 
         val label = when (labelType) {
@@ -245,24 +373,34 @@ class StudentIdBlurActivity : AppCompatActivity() {
 
     private fun addAffiliationValues(
         lines: List<StudentOcrLine>,
+        elements: List<StudentOcrLine>,
         mapper: ImageCoordinateMapper,
         targetList: ArrayList<BlurItem>,
         startCount: Int
     ): Int {
-        val labelLine = lines.firstOrNull { isLabelLine("affiliation", it.text) } ?: return startCount
+        val allItems = (lines + elements).distinctBy {
+            "${it.text}:${it.bounds.left}:${it.bounds.top}:${it.bounds.right}:${it.bounds.bottom}"
+        }
+        val labelLine = allItems.firstOrNull { isLabelLine("affiliation", it.text) }
+            ?: return startCount
         var count = startCount
-        val valueLines = lines
+        val verticalRange = maxOf(labelLine.bounds.height() * 8, 240)
+        val valueLines = allItems
             .filter { candidate ->
-                candidate.bounds.left > labelLine.bounds.right &&
-                    candidate.centerY >= labelLine.centerY - 40 &&
-                    candidate.centerY <= labelLine.centerY + 190 &&
+                candidate.bounds.left >= labelLine.bounds.right - labelLine.bounds.width() / 3 &&
+                    candidate.centerY >= labelLine.centerY - labelLine.bounds.height() &&
+                    candidate.centerY <= labelLine.centerY + verticalRange &&
                     isValueForLabel("affiliation", candidate.text)
             }
-            .sortedBy { it.bounds.top }
+            .distinctBy { it.text to it.bounds.top }
+            .toMutableList()
+
+        extractInlineAffiliation(labelLine)?.let(valueLines::add)
+        valueLines.sortBy { it.bounds.top }
 
         if (valueLines.isEmpty()) return count
 
-        val combinedRect = valueLines
+        val detectedRect = valueLines
             .map { it.bounds }
             .reduce { acc, rect ->
                 Rect(
@@ -272,8 +410,35 @@ class StudentIdBlurActivity : AppCompatActivity() {
                     maxOf(acc.bottom, rect.bottom)
                 )
             }
+        val firstValueLeft = valueLines.minOf { it.bounds.left }
+        val combinedRect = Rect(
+            firstValueLeft,
+            min(labelLine.bounds.top, detectedRect.top),
+            detectedRect.right,
+            detectedRect.bottom
+        )
         val combinedText = valueLines.joinToString(" ") { it.text }
         return addTextMask("소속", StudentOcrLine(combinedText, combinedRect), mapper, targetList, count)
+    }
+
+    private fun extractInlineAffiliation(line: StudentOcrLine): StudentOcrLine? {
+        val match = Regex("""(?:소속|학과|학부|전공)\s*[:：]?\s*(.+)""").find(line.text)
+            ?: return null
+        val value = match.groupValues[1].trim()
+        if (value.isBlank() || !isValueForLabel("affiliation", value)) return null
+
+        val labelEndRatio = match.groups[1]?.range?.first
+            ?.toFloat()
+            ?.div(line.text.length.coerceAtLeast(1))
+            ?.coerceIn(0f, 0.9f)
+            ?: return null
+        val valueLeft = line.bounds.left + (line.bounds.width() * labelEndRatio).toInt()
+        if (valueLeft >= line.bounds.right) return null
+
+        return StudentOcrLine(
+            value,
+            Rect(valueLeft, line.bounds.top, line.bounds.right, line.bounds.bottom)
+        )
     }
 
     private fun addTextMask(
@@ -297,7 +462,7 @@ class StudentIdBlurActivity : AppCompatActivity() {
         return when {
             Regex("""(?:\uC7AC\uD559|\uD734\uD559|\uC878\uC5C5|\uC218\uB8CC|\uC81C\uC801)""").containsMatchIn(normalized) -> "\uC7AC\uD559\uC0C1\uD0DC"
             Regex("""(?:\uC131\uBA85|\uC774\uB984|NAME|Name|name)[:\uFF1A]?[\uAC00-\uD7A3]{2,5}""").containsMatchIn(normalized) -> "\uC774\uB984"
-            Regex("""(?:\uD559\uBC88|StudentID|ID|No\.?|NO\.?)[:\uFF1A]?\d{6,10}""").containsMatchIn(normalized) -> "\uD559\uBC88"
+            Regex("""(?:\uD559\uBC88|StudentID|ID|No\.?|NO\.?)[:\uFF1A]?\d{9}""").containsMatchIn(normalized) -> "\uD559\uBC88"
             Regex("""(?:\uC0DD\uB144\uC6D4\uC77C|\uC0DD\uB144|Birth|BIRTH|DOB)[:\uFF1A]?(?:\d{8}|\d{2,4}[./-]\d{1,2}[./-]\d{1,2})""").containsMatchIn(normalized) -> "\uC0DD\uB144\uC6D4\uC77C"
             else -> null
         }
@@ -315,18 +480,49 @@ class StudentIdBlurActivity : AppCompatActivity() {
     }
 
     private fun isValueForLabel(labelType: String, text: String): Boolean {
-        val normalized = text.replace(" ", "")
+        return extractValueForLabel(labelType, text) != null
+    }
+
+    private fun extractValueForLabel(labelType: String, text: String): String? {
+        val normalized = text.replace(Regex("""[\s:：]"""), "")
         return when (labelType) {
-            "name" -> Regex("""^[\uAC00-\uD7A3]{2,5}$""").matches(normalized) &&
-                !isKnownFieldLabel(normalized) &&
-                !isUniversityOrFooter(normalized)
-            "student_number" -> Regex("""^\d{6,10}$""").matches(normalized)
-            "birth_date" -> Regex("""^(?:\d{8}|\d{2,4}[./-]\d{1,2}[./-]\d{1,2})$""").matches(normalized)
-            "affiliation" -> Regex("""^[\uAC00-\uD7A3A-Za-z]{2,20}$""").matches(normalized) &&
-                !isKnownFieldLabel(normalized) &&
-                !isUniversityOrFooter(normalized)
-            else -> false
+            "name" -> Regex("""[\uAC00-\uD7A3]{2,5}""")
+                .find(normalized.removePrefix("이름").removePrefix("성명"))
+                ?.value
+                ?.takeIf { !isKnownFieldLabel(it) && !isUniversityOrFooter(it) }
+            "student_number" -> normalizeNumericOcr(
+                normalized
+                    .replace("학번", "")
+                    .replace("STUDENTID", "", ignoreCase = true)
+                    .replace(Regex("""(?i)(?:ID|NO\.?)"""), "")
+            ).takeIf { it.length == 9 }
+            "birth_date" -> normalizeNumericOcr(
+                normalized
+                    .replace("생년월일", "")
+                    .replace("생년", "")
+                    .replace(Regex("""(?i)(?:BIRTH|DOB)"""), "")
+            ).takeIf { it.length == 8 }
+            "affiliation" -> Regex("""[\uAC00-\uD7A3A-Za-z]{2,20}""")
+                .find(normalized)
+                ?.value
+                ?.takeIf { !isKnownFieldLabel(it) && !isUniversityOrFooter(it) }
+            else -> null
         }
+    }
+
+    private fun normalizeNumericOcr(text: String): String {
+        return text.uppercase()
+            .replace('O', '0')
+            .replace('Q', '0')
+            .replace('D', '0')
+            .replace('I', '1')
+            .replace('L', '1')
+            .replace('|', '1')
+            .replace('Z', '2')
+            .replace('S', '5')
+            .replace('G', '6')
+            .replace('B', '8')
+            .filter(Char::isDigit)
     }
 
     private fun isKnownFieldLabel(text: String): Boolean {
@@ -484,6 +680,11 @@ class StudentIdBlurActivity : AppCompatActivity() {
         val centerY: Int
             get() = (bounds.top + bounds.bottom) / 2
     }
+
+    private data class StudentValueCandidate(
+        val line: StudentOcrLine,
+        val score: Int
+    )
 
     private class ImageCoordinateMapper(
         imageView: ImageView,
