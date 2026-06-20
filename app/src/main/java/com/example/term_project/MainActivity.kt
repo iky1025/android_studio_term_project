@@ -224,18 +224,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnClassify.isEnabled = false
-        txtResult.text = "학생증 여부를 판단하는 중입니다..."
+        txtResult.text = ""
 
         val result = classifier.classify(bitmap)
         val threshold = 0.80f
 
         val summary = buildString {
-            append("TFLite 분류 결과\n")
-            append("예측: ${toKoreanLabel(result.label)}\n")
-            append("확신도: ${String.format("%.2f", result.confidence * 100)}%\n\n")
-            result.allProbabilities.forEach { (label, probability) ->
-                append("${toKoreanLabel(label)}: ${String.format("%.2f", probability * 100)}%\n")
-            }
+            append("분류 결과: ${toKoreanLabel(result.label)}\n")
+            append("확신도: ${String.format("%.2f", result.confidence * 100)}%")
         }
 
         txtResult.text = summary
@@ -246,13 +242,11 @@ class MainActivity : AppCompatActivity() {
             }
 
             result.label == "non_student_id" && result.confidence >= threshold -> {
-                txtResult.text = "$summary\n\n사람 또는 자동차 번호판을 감지하는 중입니다..."
                 detectGeneralPrivacyThenOpen(uri, bitmap, summary)
             }
 
             else -> {
                 btnClassify.isEnabled = true
-                txtResult.text = "$summary\n\n판단이 불확실합니다. 다른 이미지를 사용해 주세요."
                 Toast.makeText(this, "판단이 불확실합니다.", Toast.LENGTH_SHORT).show()
             }
         }
@@ -295,18 +289,18 @@ class MainActivity : AppCompatActivity() {
                         } else {
                             val errorMessage =
                                 "학생증, 사람 얼굴 또는 자동차 번호판이 감지되지 않았습니다. 다른 이미지를 선택해주세요."
-                            txtResult.text = "$previousMessage\n\n$errorMessage"
+                            txtResult.text = previousMessage
                             Toast.makeText(this, errorMessage, Toast.LENGTH_LONG).show()
                         }
                     }
-                    .addOnFailureListener { error ->
+                    .addOnFailureListener {
                         btnClassify.isEnabled = true
-                        txtResult.text = "$previousMessage\n\nML Kit 문자 감지 실패: ${error.message}"
+                        txtResult.text = previousMessage
                     }
             }
-            .addOnFailureListener { error ->
+            .addOnFailureListener {
                 btnClassify.isEnabled = true
-                txtResult.text = "$previousMessage\n\nML Kit 얼굴 감지 실패: ${error.message}"
+                txtResult.text = previousMessage
             }
     }
 
