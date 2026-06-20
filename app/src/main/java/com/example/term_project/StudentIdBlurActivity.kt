@@ -11,6 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -31,6 +32,7 @@ import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
+import com.google.firebase.firestore.FirebaseFirestore
 import java.io.OutputStream
 import kotlin.math.abs
 import kotlin.math.min
@@ -47,6 +49,7 @@ class StudentIdBlurActivity : AppCompatActivity() {
 
     private var originalBitmap: Bitmap? = null
     private val blurItemsList = ArrayList<BlurItem>()
+    private val db: FirebaseFirestore by lazy { FirebaseFirestore.getInstance() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -70,12 +73,12 @@ class StudentIdBlurActivity : AppCompatActivity() {
         val confidence = intent.getFloatExtra(MainActivity.EXTRA_CONFIDENCE, 0f)
 
         if (uriString == null) {
-            Toast.makeText(this, "\uC804\uB2EC\uB41C \uC774\uBBF8\uC9C0\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "전달된 이미지가 없습니다.", Toast.LENGTH_SHORT).show()
             finish()
             return
         }
 
-        txtStatus.text = "\uBD84\uB958: ${toKoreanLabel(label)}, \uD655\uC2E0\uB3C4: ${String.format("%.2f", confidence * 100)}%\n\uD559\uC0DD\uC99D \uAC1C\uC778\uC815\uBCF4\uB97C \uAC10\uC9C0\uD558\uB294 \uC911\uC785\uB2C8\uB2E4..."
+        txtStatus.text = "분류: ${toKoreanLabel(label)}, 확신도: ${String.format("%.2f", confidence * 100)}%\n학생증 개인정보를 감지하는 중입니다..."
         processStudentIdImage(Uri.parse(uriString))
     }
 
@@ -100,7 +103,7 @@ class StudentIdBlurActivity : AppCompatActivity() {
             imageView.setImageBitmap(originalBitmap)
             detectStudentIdPrivacy(originalBitmap!!)
         } catch (e: Exception) {
-            Toast.makeText(this, "\uC774\uBBF8\uC9C0 \uB85C\uB4DC \uC2E4\uD328: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "이미지 로드 실패: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -124,7 +127,7 @@ class StudentIdBlurActivity : AppCompatActivity() {
                         val mapped = mapper.map(face.boundingBox)
                         if (mapped.width() > 0 && mapped.height() > 0) {
                             val layer = addMaskAndNumberBadge(count, mapped.left, mapped.top, mapped.width(), mapped.height())
-                            tempItems.add(BlurItem(count, "\uC5BC\uAD74 \uC0AC\uC9C4", layer))
+                            tempItems.add(BlurItem(count, "얼굴 사진", layer))
                             count++
                         }
                     }
@@ -139,7 +142,7 @@ class StudentIdBlurActivity : AppCompatActivity() {
                         }
                 }
                 .addOnFailureListener { error ->
-                    txtStatus.text = "\uC5BC\uAD74 \uAC10\uC9C0 \uC2E4\uD328: ${error.message}"
+                    txtStatus.text = "얼굴 감지 실패: ${error.message}"
                 }
         }
     }
@@ -232,10 +235,10 @@ class StudentIdBlurActivity : AppCompatActivity() {
             ?: return startCount
 
         val label = when (labelType) {
-            "name" -> "\uC774\uB984"
-            "student_number" -> "\uD559\uBC88"
-            "birth_date" -> "\uC0DD\uB144\uC6D4\uC77C"
-            else -> "\uAC1C\uC778\uC815\uBCF4"
+            "name" -> "이름"
+            "student_number" -> "학번"
+            "birth_date" -> "생년월일"
+            else -> "개인정보"
         }
         return addTextMask(label, valueLine, mapper, targetList, startCount)
     }
@@ -270,7 +273,7 @@ class StudentIdBlurActivity : AppCompatActivity() {
                 )
             }
         val combinedText = valueLines.joinToString(" ") { it.text }
-        return addTextMask("\uC18C\uC18D", StudentOcrLine(combinedText, combinedRect), mapper, targetList, count)
+        return addTextMask("소속", StudentOcrLine(combinedText, combinedRect), mapper, targetList, count)
     }
 
     private fun addTextMask(
@@ -351,9 +354,9 @@ class StudentIdBlurActivity : AppCompatActivity() {
         btnOpenDrawer.isEnabled = hasItems
         btnDownload.isEnabled = hasItems
         txtStatus.text = if (hasItems) {
-            "\uD559\uC0DD\uC99D \uAC1C\uC778\uC815\uBCF4 ${blurItemsList.size}\uAC1C\uB97C \uAC10\uC9C0\uD588\uC2B5\uB2C8\uB2E4. \uBE14\uB7EC \uBAA9\uB85D\uC5D0\uC11C \uD56D\uBAA9\uBCC4\uB85C \uC120\uD0DD\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4."
+            "학생증 개인정보 ${blurItemsList.size}개를 감지했습니다. 블러 목록에서 항목별로 선택할 수 있습니다."
         } else {
-            "\uAC10\uC9C0\uB41C \uD559\uC0DD\uC99D \uAC1C\uC778\uC815\uBCF4\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4."
+            "감지된 학생증 개인정보가 없습니다."
         }
     }
 
@@ -430,9 +433,48 @@ class StudentIdBlurActivity : AppCompatActivity() {
             val outputStream: OutputStream? = contentResolver.openOutputStream(targetUri)
             outputStream?.use { stream ->
                 resultBitmap.compress(Bitmap.CompressFormat.JPEG, 100, stream)
-                Toast.makeText(this, "\uAC24\uB7EC\uB9AC\uC5D0 \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "갤러리에 저장했습니다.", Toast.LENGTH_SHORT).show()
+                sendDataToFirebase()
             }
         }
+    }
+
+    private fun sendDataToFirebase() {
+        val user = mutableMapOf<String, Any>(
+            "name" to "none",
+            "student_number" to "none",
+            "birth_date" to "none",
+            "affiliation" to "none"
+        )
+
+        blurItemsList.forEach { item ->
+            val rawText = item.label
+            when {
+                rawText.startsWith("이름:") ->
+                    user["name"] = rawText.substringAfter("이름:").trim()
+                rawText.startsWith("학번:") ->
+                    user["student_number"] = rawText.substringAfter("학번:").trim()
+                rawText.startsWith("생년월일:") ->
+                    user["birth_date"] = rawText.substringAfter("생년월일:").trim()
+                rawText.startsWith("소속:") ->
+                    user["affiliation"] = rawText.substringAfter("소속:").trim()
+            }
+        }
+
+        db.collection("users")
+            .add(user)
+            .addOnSuccessListener { documentReference ->
+                Log.d("FirebaseDebug", "Success: ${documentReference.id}")
+                Toast.makeText(this, "Firebase에 정보를 저장했습니다.", Toast.LENGTH_SHORT).show()
+            }
+            .addOnFailureListener { exception ->
+                Log.e("FirebaseDebug", "Failure to insert record", exception)
+                Toast.makeText(
+                    this,
+                    "Firebase 저장 실패: ${exception.localizedMessage}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
     }
 
     private data class StudentOcrLine(
