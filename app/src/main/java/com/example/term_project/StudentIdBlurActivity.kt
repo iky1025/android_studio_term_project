@@ -24,6 +24,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
@@ -37,6 +38,10 @@ import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
 import com.google.firebase.firestore.FirebaseFirestore
 import java.io.OutputStream
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.min
 
@@ -141,19 +146,29 @@ class StudentIdBlurActivity : AppCompatActivity() {
 
     private fun detectStudentIdPrivacy(bitmap: Bitmap) {
         val inputImage = InputImage.fromBitmap(bitmap, 0)
-        val ocrBitmap = createOcrBitmap(bitmap)
-        val ocrInputImage = InputImage.fromBitmap(ocrBitmap, 0)
-        val faceDetector = FaceDetection.getClient(
-            FaceDetectorOptions.Builder()
-                .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
-                .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
-                .build()
-        )
-        val textRecognizer = TextRecognition.getClient(KoreanTextRecognizerOptions.Builder().build())
-        val tempItems = ArrayList<BlurItem>()
-        var count = 1
+        lifecycleScope.launch {
+            val ocrBitmap = try {
+                withContext(Dispatchers.Default) {
+                    createOcrBitmap(bitmap)
+                }
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                txtStatus.text = "OCR 이미지 전처리 실패: ${error.message}"
+                return@launch
+            }
 
-        imageView.post {
+            val ocrInputImage = InputImage.fromBitmap(ocrBitmap, 0)
+            val faceDetector = FaceDetection.getClient(
+                FaceDetectorOptions.Builder()
+                    .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
+                    .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
+                    .build()
+            )
+            val textRecognizer = TextRecognition.getClient(KoreanTextRecognizerOptions.Builder().build())
+            val tempItems = ArrayList<BlurItem>()
+            var count = 1
+
+            imageView.post {
             val mapper = ImageCoordinateMapper(imageView, bitmap)
             val ocrMapper = ImageCoordinateMapper(imageView, ocrBitmap)
 
@@ -200,6 +215,7 @@ class StudentIdBlurActivity : AppCompatActivity() {
                 .addOnCompleteListener {
                     faceDetector.close()
                 }
+            }
         }
     }
 

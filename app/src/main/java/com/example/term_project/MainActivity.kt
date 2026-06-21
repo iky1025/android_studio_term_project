@@ -22,11 +22,16 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
 
@@ -226,28 +231,43 @@ class MainActivity : AppCompatActivity() {
         btnClassify.isEnabled = false
         txtResult.text = ""
 
-        val result = classifier.classify(bitmap)
-        val threshold = 0.80f
+        lifecycleScope.launch {
+            try {
+                val result = withContext(Dispatchers.Default) {
+                    classifier.classify(bitmap)
+                }
+                val threshold = 0.80f
 
-        val summary = buildString {
-            append("분류 결과: ${toKoreanLabel(result.label)}\n")
-            append("확신도: ${String.format("%.2f", result.confidence * 100)}%")
-        }
+                val summary = buildString {
+                    append("분류 결과: ${toKoreanLabel(result.label)}\n")
+                    append("확신도: ${String.format("%.2f", result.confidence * 100)}%")
+                }
 
-        txtResult.text = summary
+                txtResult.text = summary
 
-        when {
-            result.label == "student_id" && result.confidence >= threshold -> {
-                openStudentIdActivity(uri, result.label, result.confidence)
-            }
+                when {
+                    result.label == "student_id" && result.confidence >= threshold -> {
+                        openStudentIdActivity(uri, result.label, result.confidence)
+                    }
 
-            result.label == "non_student_id" && result.confidence >= threshold -> {
-                detectGeneralPrivacyThenOpen(uri, bitmap, summary)
-            }
+                    result.label == "non_student_id" && result.confidence >= threshold -> {
+                        detectGeneralPrivacyThenOpen(uri, bitmap, summary)
+                    }
 
-            else -> {
+                    else -> {
+                        btnClassify.isEnabled = true
+                        Toast.makeText(this@MainActivity, "판단이 불확실합니다.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
                 btnClassify.isEnabled = true
-                Toast.makeText(this, "판단이 불확실합니다.", Toast.LENGTH_SHORT).show()
+                txtResult.text = "분류 실패: ${error.message}"
+                Toast.makeText(
+                    this@MainActivity,
+                    "이미지 분류 중 오류가 발생했습니다.",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
     }

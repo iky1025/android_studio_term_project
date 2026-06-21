@@ -23,6 +23,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.mlkit.vision.common.InputImage
@@ -31,6 +32,10 @@ import com.google.mlkit.vision.face.FaceDetectorOptions
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
 import java.io.OutputStream
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.min
 
@@ -102,24 +107,38 @@ class GeneralBlurActivity : AppCompatActivity() {
     }
 
     private fun detectFacesAndPlates(bitmap: Bitmap) {
-        val faceImage = InputImage.fromBitmap(bitmap, 0)
-        val textImageNormal = InputImage.fromBitmap(bitmap, 0)
-        val textImageContrast = InputImage.fromBitmap(preProcessBitmap(bitmap, 1.5f, 0f), 0)
-        val textImageShadow = InputImage.fromBitmap(preProcessBitmap(bitmap, 1.1f, 40f), 0)
-        val zoomedBitmap = createZoomedRoiBitmap(bitmap)
-        val textImageZoomed = InputImage.fromBitmap(zoomedBitmap, 0)
+        lifecycleScope.launch {
+            val processedImages = try {
+                withContext(Dispatchers.Default) {
+                    ProcessedImages(
+                        contrast = preProcessBitmap(bitmap, 1.5f, 0f),
+                        shadow = preProcessBitmap(bitmap, 1.1f, 40f),
+                        zoomed = createZoomedRoiBitmap(bitmap)
+                    )
+                }
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                txtStatus.text = "이미지 전처리 실패: ${error.message}"
+                return@launch
+            }
 
-        val faceDetector = FaceDetection.getClient(
-            FaceDetectorOptions.Builder()
-                .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
-                .build()
-        )
-        val textRecognizer = TextRecognition.getClient(KoreanTextRecognizerOptions.Builder().build())
-        val tempItems = ArrayList<BlurItem>()
-        val plateRegex = Regex("""(?:\d{2,3}\s*[가-힣]\s*\d{4}|[가-힣]{2}\s*\d{1,2}\s*[가-힣]\s*\d{4})""")
-        var count = 1
+            val faceImage = InputImage.fromBitmap(bitmap, 0)
+            val textImageNormal = InputImage.fromBitmap(bitmap, 0)
+            val textImageContrast = InputImage.fromBitmap(processedImages.contrast, 0)
+            val textImageShadow = InputImage.fromBitmap(processedImages.shadow, 0)
+            val textImageZoomed = InputImage.fromBitmap(processedImages.zoomed, 0)
 
-        imageView.post {
+            val faceDetector = FaceDetection.getClient(
+                FaceDetectorOptions.Builder()
+                    .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
+                    .build()
+            )
+            val textRecognizer = TextRecognition.getClient(KoreanTextRecognizerOptions.Builder().build())
+            val tempItems = ArrayList<BlurItem>()
+            val plateRegex = Regex("""(?:\d{2,3}\s*[가-힣]\s*\d{4}|[가-힣]{2}\s*\d{1,2}\s*[가-힣]\s*\d{4})""")
+            var count = 1
+
+            imageView.post {
             val mapper = ImageCoordinateMapper(imageView, bitmap)
 
             faceDetector.process(faceImage)
@@ -158,6 +177,7 @@ class GeneralBlurActivity : AppCompatActivity() {
                 .addOnFailureListener {
                     txtStatus.text = "ML Kit 감지 실패: ${it.message}"
                 }
+            }
         }
     }
 
@@ -346,6 +366,12 @@ class GeneralBlurActivity : AppCompatActivity() {
         val cropped = Bitmap.createBitmap(src, startX, startY, cropWidth, cropHeight)
         return Bitmap.createScaledBitmap(cropped, cropWidth * 3, cropHeight * 3, true)
     }
+
+    private data class ProcessedImages(
+        val contrast: Bitmap,
+        val shadow: Bitmap,
+        val zoomed: Bitmap
+    )
 
     private class ImageCoordinateMapper(
         imageView: ImageView,
