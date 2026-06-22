@@ -230,7 +230,7 @@ class MainActivity : AppCompatActivity() {
 
         btnClassify.isEnabled = false
         txtResult.text = ""
-
+//코루틴 사용
         lifecycleScope.launch {
             try {
                 val result = withContext(Dispatchers.Default) {

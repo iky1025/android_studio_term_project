@@ -146,9 +146,10 @@ class StudentIdBlurActivity : AppCompatActivity() {
 
     private fun detectStudentIdPrivacy(bitmap: Bitmap) {
         val inputImage = InputImage.fromBitmap(bitmap, 0)
+//        코투틴 사용
         lifecycleScope.launch {
             val ocrBitmap = try {
-                withContext(Dispatchers.Default) {
+                withContext(Dispatchers.Default) {  
                     createOcrBitmap(bitmap)
                 }
             } catch (error: Exception) {
@@ -660,6 +661,8 @@ class StudentIdBlurActivity : AppCompatActivity() {
         )
 
         blurItemsList.forEach { item ->
+            if (item.isChecked) return@forEach
+
             val rawText = item.label
             when {
                 rawText.startsWith("이름:") ->
